@@ -1,6 +1,5 @@
 from flask import Flask, request, jsonify, abort, render_template, redirect, session, url_for, g
 import MySQLdb.cursors
-import hashlib
 import html
 import json
 import math
@@ -13,7 +12,6 @@ import urllib
 import redis
 from pydarts import PyDarts
 
-USER_ID = 600
 regex_br = re.compile("\n")
 
 static_folder = pathlib.Path(__file__).resolve().parent.parent / 'public'
@@ -118,7 +116,7 @@ def get_initialize():
 
     cur.execute('SELECT * from user')
     for u in cur.fetchall():
-        client.hmset('user:%s' % u['name'], {'id': row['id'], 'salt': u['salt'], 'password': u['password']})
+        client.set('user:%s' % u['name'], u['name'])
 
     return jsonify(result = 'ok')
 
@@ -197,16 +195,14 @@ def post_register():
     if name == None or name == '' or pw == None or pw == '':
         abort(400)
 
-    user_id = register(dbh().cursor(), name, pw)
+    user_id = register(name, pw)
     session['user_id'] = user_id
     return redirect('/')
 
-def register(cur, user, password):
-    salt = random_string(20)
+def register(user, password):
     client = redish()
-    USER_ID += 1
-    client.hmset('user:%s' % user, {'id': USER_ID, 'salt': salt, 'password': hashlib.sha1((salt + "password").encode('utf-8')).hexdigest()}
-    return USER_ID
+    client.set('user:%s' % user, password)
+    return user
 
 def random_string(n):
     return ''.join([random.choice(string.ascii_letters + string.digits) for i in range(n)])
@@ -220,11 +216,11 @@ def get_login():
 def post_login():
     name = request.form['name']
     client = redish()
-    row = client.hgetall('user:%s' % name)
-    if row == None or row['password'] != hashlib.sha1((row['salt'] + request.form['password']).encode('utf-8')).hexdigest():
+    password = client.get('user:%s' % name)
+    if password != request.form['password']:
         abort(403)
 
-    session['user_id'] = row['id']
+    session['user_id'] = name
     return redirect('/')
 
 @app.route('/logout')
