@@ -75,12 +75,12 @@ def set_name(func):
     def wrapper(*args, **kwargs):
         if "user_id" in session:
             request.user_id   = user_id = session['user_id']
-            cur = dbh().cursor()
-            cur.execute('SELECT name FROM user WHERE id = %s', (user_id, ))
-            user = cur.fetchone()
-            if user == None:
+            client = redish()
+            password = client.get('user:%s' % user_id)
+
+            if not password:
                 abort(403)
-            request.user_name = user['name']
+            request.user_name = user_id
 
         return func(*args, **kwargs)
     return wrapper
