@@ -89,6 +89,7 @@ def authenticate(func):
 def get_initialize():
     cur = dbh().cursor()
     cur.execute('DELETE FROM entry WHERE id > 7101')
+    cur.execute('TRUNCATE star')
     origin = config('isutar_origin')
     urllib.request.urlopen(origin + '/initialize')
     return jsonify(result = 'ok')
@@ -221,6 +222,28 @@ def delete_keyword(keyword):
     cur.execute('DELETE FROM entry WHERE keyword = %s', (keyword,))
 
     return redirect('/')
+
+@app.route("/stars")
+def get_stars():
+    cur = dbh().cursor()
+    cur.execute('SELECT * FROM star WHERE keyword = %s', (request.args['keyword'], ))
+    return jsonify(stars = cur.fetchall())
+
+@app.route("/stars", methods=['POST'])
+def post_stars():
+    keyword = request.args.get('keyword', "")
+    if keyword == None or keyword == "":
+        keyword = request.form['keyword']
+
+    cur = dbh().cursor()
+    cur.execute('SELECT COUNT(1) AS cnt FROM entry WHERE keyword = %s', (keyword,))
+    cnt = cur.fetchone()
+    if not cnt['cnt']:
+        abort(404)
+
+    cur.execute('INSERT INTO star (keyword, user_name, created_at) VALUES (%s, %s, NOW())', (keyword, request.args.get('user', '', )))
+
+    return jsonify(result = 'ok')
 
 def htmlify(content):
     if content == None or content == '':
