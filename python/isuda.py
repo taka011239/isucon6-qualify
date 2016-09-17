@@ -108,6 +108,10 @@ def get_initialize():
                 for e in cur.fetchall()}
     client.zadd('entry:keyword:length', **keywords)
 
+    cur.execute('SELECT name from user')
+    for u in cur.fetchall():
+        client.set('user:%s' % u['name'], u['name'])
+
     if hasattr(g, 'da'):
         delattr(g, 'da')
 
