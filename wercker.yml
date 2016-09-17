@@ -10,11 +10,15 @@ deploy:
         hide-from-log: true
         content: $WERCKER_SSH_KEY_PRIVATE
     - script:
+        name: test
+        code: |
+          pwd
+          ls -la
+    - script:
         name: set permissions for ssh key
         code: chmod 0400 $HOME/.ssh/id_rsa
    - script:
       name: stop application
-      code: ssh -i $HOME/.ssh/id_rsa -l root -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no 13.78.80.139 stop stop isuda.python.service
       code: ssh -i $HOME/.ssh/id_rsa -l root -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no 13.78.80.139 stop stop isuda.python.service
    - script:
       name: transfer application
@@ -25,4 +29,3 @@ deploy:
    - script:
       name: start application
       code: ssh -i $HOME/.ssh/id_rsa -l root -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no 13.78.80.139 systemctl start isuda.python.service
-      code: ssh -i $HOME/.ssh/id_rsa -l root -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no 13.78.80.139 systemctl start isutar.python.service
