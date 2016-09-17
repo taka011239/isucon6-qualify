@@ -13,6 +13,7 @@ import urllib
 import redis
 from pydarts import PyDarts
 
+USER_ID = 600
 regex_br = re.compile("\n")
 
 static_folder = pathlib.Path(__file__).resolve().parent.parent / 'public'
@@ -115,6 +116,10 @@ def get_initialize():
     if hasattr(g, 'entry_html'):
         delattr(g, 'entry_html')
 
+    cur.execute('SELECT * from user')
+    for u in cur.fetchall():
+        client.hmset('user:%s' % u['name'], {'id': row['id'], 'salt': u['salt'], 'password': u['password']})
+
     return jsonify(result = 'ok')
 
 def keyword_replacement(keyword):
@@ -198,9 +203,10 @@ def post_register():
 
 def register(cur, user, password):
     salt = random_string(20)
-    cur.execute("INSERT INTO user (name, salt, password, created_at) VALUES (%s, %s, %s, NOW())", (user, salt, hashlib.sha1((salt + "password").encode('utf-8')).hexdigest(),))
-    cur.execute("SELECT LAST_INSERT_ID() AS last_insert_id")
-    return cur.fetchone()['last_insert_id']
+    client = redish()
+    USER_ID += 1
+    client.hmset('user:%s' % user, {'id': USER_ID, 'salt': salt, 'password': hashlib.sha1((salt + "password").encode('utf-8')).hexdigest()}
+    return USER_ID
 
 def random_string(n):
     return ''.join([random.choice(string.ascii_letters + string.digits) for i in range(n)])
@@ -213,9 +219,8 @@ def get_login():
 @app.route('/login', methods=['POST'])
 def post_login():
     name = request.form['name']
-    cur = dbh().cursor()
-    cur.execute("SELECT * FROM user WHERE name = %s", (name, ))
-    row = cur.fetchone()
+    client = redish()
+    row = client.hgetall('user:%s' % name)
     if row == None or row['password'] != hashlib.sha1((row['salt'] + request.form['password']).encode('utf-8')).hexdigest():
         abort(403)
 
