@@ -69,22 +69,6 @@ def close_db(exception=None):
 def ucfirst(str):
     return str[0].upper() + str[-len(str) + 1:]
 
-def set_name(func):
-    import functools
-    @functools.wraps(func)
-    def wrapper(*args, **kwargs):
-        if "user_id" in session:
-            request.user_id   = user_id = session['user_id']
-            client = redish()
-            password = client.get('user:%s' % user_id)
-
-            if not password:
-                abort(403)
-            request.user_name = user_id
-
-        return func(*args, **kwargs)
-    return wrapper
-
 def authenticate(func):
     import functools
     @functools.wraps(func)
@@ -128,7 +112,6 @@ def keyword_replacement(keyword):
     return '{}\t{}'.format(html.escape(keyword), link)
 
 @app.route('/')
-@set_name
 def get_index():
     PER_PAGE = 10
     page = int(request.args.get('page', '1'))
@@ -153,7 +136,6 @@ def get_robot_txt():
     abort(404)
 
 @app.route('/keyword', methods=['POST'])
-@set_name
 @authenticate
 def create_keyword():
     keyword = request.form['keyword']
@@ -188,7 +170,6 @@ def create_keyword():
     return redirect('/')
 
 @app.route('/register')
-@set_name
 def get_register():
     return render_template('authenticate.html', action = 'register')
 
@@ -212,7 +193,6 @@ def random_string(n):
     return ''.join([random.choice(string.ascii_letters + string.digits) for i in range(n)])
 
 @app.route('/login')
-@set_name
 def get_login():
     return render_template('authenticate.html', action = 'login')
 
@@ -225,6 +205,7 @@ def post_login():
         abort(403)
 
     session['user_id'] = name
+    session['user_name'] = name
     return redirect('/')
 
 @app.route('/logout')
@@ -233,7 +214,6 @@ def get_logout():
     return redirect('/')
 
 @app.route('/keyword/<keyword>')
-@set_name
 def get_keyword(keyword):
     if keyword == '':
         abort(400)
@@ -249,7 +229,6 @@ def get_keyword(keyword):
     return render_template('keyword.html', entry = entry)
 
 @app.route('/keyword/<keyword>', methods=['POST'])
-@set_name
 @authenticate
 def delete_keyword(keyword):
     if keyword == '':
