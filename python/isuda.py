@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, abort, render_template, redirect, session, url_for
+from flask import Flask, request, jsonify, abort, render_template, redirect, session, url_for, g
 import MySQLdb.cursors
 import hashlib
 import html
@@ -11,6 +11,8 @@ import re
 import string
 import urllib
 import redis
+
+regex_br = re.compile("\n")
 
 static_folder = pathlib.Path(__file__).resolve().parent.parent / 'public'
 app = Flask(__name__, static_folder = str(static_folder), static_url_path='')
@@ -32,10 +34,10 @@ def config(key):
         raise "config value of %s undefined" % key
 
 def dbh():
-    if hasattr(request, 'db'):
-        return request.db
+    if hasattr(g, 'db'):
+        return g.db
     else:
-        request.db = MySQLdb.connect(**{
+        g.db = MySQLdb.connect(**{
             'host': config('db_host'),
             'port': config('db_port'),
             'user': config('db_user'),
@@ -45,10 +47,18 @@ def dbh():
             'cursorclass': MySQLdb.cursors.DictCursor,
             'autocommit': True,
         })
-        cur = request.db.cursor()
+        cur = g.db.cursor()
         cur.execute("SET SESSION sql_mode='TRADITIONAL,NO_AUTO_VALUE_ON_ZERO,ONLY_FULL_GROUP_BY'")
         cur.execute('SET NAMES utf8mb4')
-        return request.db
+        return g.db
+
+
+def redish():
+    if hasattr(g, 'redis'):
+        return g.redis
+    else:
+        g.redis = redis.Redis()
+        return g.redis
 
 @app.teardown_request
 def close_db(exception=None):
@@ -92,12 +102,21 @@ def get_initialize():
     cur.execute('TRUNCATE star')
 
     cur.execute('SELECT keyword FROM entry WHERE id <= 7101')
-    client = redis.Redis()
+    client = redish()
     client.flushall()
-    keywords = {e['keyword']: len(e['keyword']) for e in cur.fetchall()}
+    keywords = {keyword_replacement(e['keyword']): len(e['keyword'])
+                for e in cur.fetchall()}
     client.zadd('entry:keyword:length', **keywords)
 
+    if hasattr(g, 'regex_keyword'):
+        delattr(g, 'regex_keyword')
+
     return jsonify(result = 'ok')
+
+def keyword_replacement(keyword):
+    url = url_for('get_keyword', keyword=keyword)
+    link = "<a href=\"%s\">%s</a>" % (url, html.escape(keyword))
+    return '{}\t{}'.format(html.escape(keyword), link)
 
 @app.route('/')
 @set_name
@@ -145,8 +164,12 @@ def create_keyword():
         ON DUPLICATE KEY UPDATE
         author_id = %s, keyword = %s, description = %s, updated_at = NOW()
 """
-    client = redis.Redis()
-    client.zadd('entry:keyword:length', keyword, len(keyword))
+    client = redish()
+    client.zadd('entry:keyword:length', keyword_replacement(keyword), len(keyword))
+
+    if hasattr(g, 'regex_keyword'):
+        delattr(g, 'regex_keyword')
+
     cur.execute(sql, (user_id, keyword, description, user_id, keyword, description))
     return redirect('/')
 
@@ -227,8 +250,11 @@ def delete_keyword(keyword):
         abort(404)
 
     cur.execute('DELETE FROM entry WHERE keyword = %s', (keyword,))
-    client = redis.Redis()
+    client = redish()
     client.zrem('entry:keyword:length', keyword)
+
+    if hasattr(g, 'regex_keyword'):
+        delattr(g, 'regex_keyword')
 
     return redirect('/')
 
@@ -257,22 +283,21 @@ def htmlify(content):
     if content == None or content == '':
         return ''
 
-    client = redis.Redis()
+    client = redish()
     keywords = client.zrevrange('entry:keyword:length', 0, -1)
-    keyword_re = re.compile("(%s)" % '|'.join([ re.escape(k.decode("utf-8")) for k in keywords]))
-    kw2sha = {}
+    keywords = [tuple(k.decode('utf-8').split('\t')) for k in keywords] # [(keyword, link), ...]
+    kw2link = {k: l for k, l in keywords}
+
+    if not hasattr(g, 'regex_keyword'):
+        g.regex_keyword = re.compile("(%s)" % '|'.join([ re.escape(k) for k, _ in keywords]))
+
     def replace_keyword(m):
-        kw2sha[m.group(0)] = "isuda_%s" % hashlib.sha1(m.group(0).encode('utf-8')).hexdigest()
-        return kw2sha[m.group(0)]
+        return kw2link[m.group(0)]
 
-    result = re.sub(keyword_re, replace_keyword, content)
-    result = html.escape(result)
-    for kw, hash in kw2sha.items():
-        url = url_for('get_keyword', keyword = kw)
-        link = "<a href=\"%s\">%s</a>" % (url, html.escape(kw))
-        result = re.sub(re.compile(hash), link, result)
+    result = html.escape(content)
+    result = re.sub(g.regex_keyword, replace_keyword, result)
 
-    return re.sub(re.compile("\n"), "<br />", result)
+    return re.sub(regex_br, "<br />", result)
 
 def load_stars(keyword, cur):
     cur.execute('SELECT * FROM star WHERE keyword = %s', (keyword, ))
@@ -287,3 +312,4 @@ def is_spam_contents(content):
 
 if __name__ == "__main__":
     app.run()
+
