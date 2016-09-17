@@ -259,7 +259,7 @@ def htmlify(content):
 
     client = redis.Redis()
     keywords = client.zrevrange('entry:keyword:length', 0, -1)
-    keyword_re = re.compile("(%s)" % '|'.join([ re.escape(k) for k in keywords]))
+    keyword_re = re.compile("(%s)" % '|'.join([ re.escape(k.decode("utf-8")) for k in keywords]))
     kw2sha = {}
     def replace_keyword(m):
         kw2sha[m.group(0)] = "isuda_%s" % hashlib.sha1(m.group(0).encode('utf-8')).hexdigest()
