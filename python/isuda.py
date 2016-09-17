@@ -216,7 +216,7 @@ def get_login():
 def post_login():
     name = request.form['name']
     client = redish()
-    password = client.get('user:%s' % name)
+    password = client.get('user:%s' % name).decode('utf-8')
     if password != request.form['password']:
         abort(403)
 
