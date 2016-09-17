@@ -8,8 +8,8 @@ def dbh():
     db = MySQLdb.connect(**{
         'host': os.environ.get('ISUDA_DB_HOST', 'localhost'),
         'port': int(os.environ.get('ISUDA_DB_PORT', '3306')),
-        'user': os.environ.get('ISUDA_DB_USER', 'root'),
-        'passwd': os.environ.get('ISUDA_DB_PASSWORD', ''),
+        'user': os.environ.get('ISUDA_DB_USER', 'isucon'),
+        'passwd': os.environ.get('ISUDA_DB_PASSWORD', 'isucon'),
         'db': 'isuda',
         'charset': 'utf8mb4',
         'cursorclass': MySQLdb.cursors.DictCursor,
@@ -27,10 +27,10 @@ def main():
     import sys
 
     cur = dbh().cursor()
-    cur.execute('SELECT keyword FROM entry WHERE id <= 7101')
+    cur.execute('SELECT * FROM entry WHERE id <= 7101')
     with open(sys.argv[1], 'w') as fp:
-        for kw, in cur:
-            fp.write(kw)
+        for row in cur:
+            fp.write(row['keyword'])
             fp.write('\n')
 
 if __name__ == '__main__':
