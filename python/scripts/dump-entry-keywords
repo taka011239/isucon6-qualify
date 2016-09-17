@@ -1,0 +1,37 @@
+# coding: utf-8
+
+import os
+import MySQLdb.cursors
+
+
+def dbh():
+    db = MySQLdb.connect(**{
+        'host': os.environ.get('ISUDA_DB_HOST', 'localhost'),
+        'port': int(os.environ.get('ISUDA_DB_PORT', '3306')),
+        'user': os.environ.get('ISUDA_DB_USER', 'root'),
+        'passwd': os.environ.get('ISUDA_DB_PASSWORD', ''),
+        'db': 'isuda',
+        'charset': 'utf8mb4',
+        'cursorclass': MySQLdb.cursors.DictCursor,
+        'autocommit': True,
+    })
+
+    cur = db.cursor()
+    cur.execute("SET SESSION sql_mode='TRADITIONAL,NO_AUTO_VALUE_ON_ZERO,ONLY_FULL_GROUP_BY'")
+    cur.execute('SET NAMES utf8mb4')
+
+    return db
+
+
+def main():
+    import sys
+
+    cur = dbh().cursor()
+    cur.execute('SELECT keyword FROM entry WHERE id <= 7101')
+    with open(sys.argv[1], 'w') as fp:
+        for kw, in cur:
+            fp.write(kw)
+            fp.write('\n')
+
+if __name__ == '__main__':
+    main()
