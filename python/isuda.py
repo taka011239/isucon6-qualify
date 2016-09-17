@@ -21,7 +21,6 @@ _config = {
     'db_port':       int(os.environ.get('ISUDA_DB_PORT', '3306')),
     'db_user':       os.environ.get('ISUDA_DB_USER', 'root'),
     'db_password':   os.environ.get('ISUDA_DB_PASSWORD', ''),
-    'isutar_origin': os.environ.get('ISUTAR_ORIGIN', 'http://localhost:5001'),
     'isupam_origin': os.environ.get('ISUPAM_ORIGIN', 'http://localhost:5050'),
 }
 
@@ -90,8 +89,6 @@ def get_initialize():
     cur = dbh().cursor()
     cur.execute('DELETE FROM entry WHERE id > 7101')
     cur.execute('TRUNCATE star')
-    origin = config('isutar_origin')
-    urllib.request.urlopen(origin + '/initialize')
     return jsonify(result = 'ok')
 
 @app.route('/')
@@ -105,7 +102,7 @@ def get_index():
     entries = cur.fetchall()
     for entry in entries:
         entry['html'] = htmlify(entry['description'])
-        entry['stars'] = load_stars(entry['keyword'])
+        entry['stars'] = load_stars(entry['keyword'], cur)
 
     cur.execute('SELECT COUNT(*) AS count FROM entry')
     row = cur.fetchone()
@@ -203,7 +200,7 @@ def get_keyword(keyword):
         abort(404)
 
     entry['html'] = htmlify(entry['description'])
-    entry['stars'] = load_stars(entry['keyword'])
+    entry['stars'] = load_stars(entry['keyword'], cur)
     return render_template('keyword.html', entry = entry)
 
 @app.route('/keyword/<keyword>', methods=['POST'])
@@ -226,8 +223,7 @@ def delete_keyword(keyword):
 @app.route("/stars")
 def get_stars():
     cur = dbh().cursor()
-    cur.execute('SELECT * FROM star WHERE keyword = %s', (request.args['keyword'], ))
-    return jsonify(stars = cur.fetchall())
+    return jsonify(stars = load_stars(request.args['keyword'], cur))
 
 @app.route("/stars", methods=['POST'])
 def post_stars():
@@ -267,13 +263,9 @@ def htmlify(content):
 
     return re.sub(re.compile("\n"), "<br />", result)
 
-def load_stars(keyword):
-    origin = config('isutar_origin')
-    url = "%s/stars" % origin
-    params = urllib.parse.urlencode({'keyword': keyword})
-    with urllib.request.urlopen(url + "?%s" % params) as res:
-        data = json.loads(res.read().decode('utf-8'))
-        return data['stars']
+def load_stars(keyword, cur):
+    cur.execute('SELECT * FROM star WHERE keyword = %s', (keyword, ))
+    return cur.fetchall()
 
 def is_spam_contents(content):
     with urllib.request.urlopen(config('isupam_origin'), urllib.parse.urlencode({ "content": content }).encode('utf-8')) as res:
