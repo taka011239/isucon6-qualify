@@ -11,6 +11,7 @@ import re
 import string
 import urllib
 import redis
+from pydarts import PyDarts
 
 regex_br = re.compile("\n")
 
@@ -108,8 +109,11 @@ def get_initialize():
                 for e in cur.fetchall()}
     client.zadd('entry:keyword:length', **keywords)
 
-    if hasattr(g, 'regex_keyword'):
-        delattr(g, 'regex_keyword')
+    if hasattr(g, 'da'):
+        delattr(g, 'da')
+
+    if hasattr(g, 'entry_html'):
+        delattr(g, 'entry_html')
 
     return jsonify(result = 'ok')
 
@@ -128,7 +132,7 @@ def get_index():
     cur.execute('SELECT * FROM entry ORDER BY updated_at DESC LIMIT %s OFFSET %s', (PER_PAGE, PER_PAGE * (page - 1),))
     entries = cur.fetchall()
     for entry in entries:
-        entry['html'] = htmlify(entry['description'])
+        entry['html'] = htmlify(entry['keyword'], entry['description'])
         entry['stars'] = load_stars(entry['keyword'], cur)
 
     cur.execute('SELECT COUNT(*) AS count FROM entry')
@@ -167,8 +171,11 @@ def create_keyword():
     client = redish()
     client.zadd('entry:keyword:length', keyword_replacement(keyword), len(keyword))
 
-    if hasattr(g, 'regex_keyword'):
-        delattr(g, 'regex_keyword')
+    if hasattr(g, 'da'):
+        delattr(g, 'da')
+
+    if hasattr(g, 'entry_html'):
+        delattr(g, 'entry_html')
 
     cur.execute(sql, (user_id, keyword, description, user_id, keyword, description))
     return redirect('/')
@@ -232,7 +239,7 @@ def get_keyword(keyword):
     if entry == None:
         abort(404)
 
-    entry['html'] = htmlify(entry['description'])
+    entry['html'] = htmlify(entry['keyword'], entry['description'])
     entry['stars'] = load_stars(entry['keyword'], cur)
     return render_template('keyword.html', entry = entry)
 
@@ -253,8 +260,8 @@ def delete_keyword(keyword):
     client = redish()
     client.zrem('entry:keyword:length', keyword)
 
-    if hasattr(g, 'regex_keyword'):
-        delattr(g, 'regex_keyword')
+    if hasattr(g, 'entry_html'):
+        delattr(g, 'entry_html')
 
     return redirect('/')
 
@@ -279,7 +286,15 @@ def post_stars():
 
     return jsonify(result = 'ok')
 
-def htmlify(content):
+def htmlify(keyword, content):
+    if not hasattr(g, 'entry_html'):
+        print('miss hit 1')
+        g.entry_html = {}
+    cache = g.entry_html.get(keyword)
+    if cache:
+        return cache
+    print('miss hit 2')
+
     if content == None or content == '':
         return ''
 
@@ -288,16 +303,23 @@ def htmlify(content):
     keywords = [tuple(k.decode('utf-8').split('\t')) for k in keywords] # [(keyword, link), ...]
     kw2link = {k: l for k, l in keywords}
 
-    if not hasattr(g, 'regex_keyword'):
-        g.regex_keyword = re.compile("(%s)" % '|'.join([ re.escape(k) for k, _ in keywords]))
+    result = html.escape(content)
+
+    if not hasattr(g, 'da'):
+        PyDarts.build([k for k,_ in keywords], '/tmp/isuda.da')
+        g.da = PyDarts('/tmp/isuda.da')
+
+    keywords = [k for k,_ in g.da.match(result)]
 
     def replace_keyword(m):
         return kw2link[m.group(0)]
 
-    result = html.escape(content)
-    result = re.sub(g.regex_keyword, replace_keyword, result)
+    regex_keyword = re.compile("(%s)" % '|'.join([re.escape(k) for k in keywords]))
+    result = re.sub(regex_keyword, replace_keyword, result)
 
-    return re.sub(regex_br, "<br />", result)
+    result = re.sub(regex_br, "<br />", result)
+    g.entry_html[keyword] = result
+    return result
 
 def load_stars(keyword, cur):
     cur.execute('SELECT * FROM star WHERE keyword = %s', (keyword, ))
@@ -312,4 +334,5 @@ def is_spam_contents(content):
 
 if __name__ == "__main__":
     app.run()
+
 
