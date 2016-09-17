@@ -10,6 +10,7 @@ import random
 import re
 import string
 import urllib
+import redis
 
 static_folder = pathlib.Path(__file__).resolve().parent.parent / 'public'
 app = Flask(__name__, static_folder = str(static_folder), static_url_path='')
@@ -89,6 +90,13 @@ def get_initialize():
     cur = dbh().cursor()
     cur.execute('DELETE FROM entry WHERE id > 7101')
     cur.execute('TRUNCATE star')
+
+    cur.execute('SELECT keyword FROM entry WHERE id <= 7101')
+    client = redis.Redis()
+    client.flushall()
+    keywords = {e['keyword']: len(e['keyword']) for e in cur.fetchall()}
+    client.zadd('entry:keyword:length', **keywords)
+
     return jsonify(result = 'ok')
 
 @app.route('/')
@@ -137,6 +145,8 @@ def create_keyword():
         ON DUPLICATE KEY UPDATE
         author_id = %s, keyword = %s, description = %s, updated_at = NOW()
 """
+    client = redis.Redis()
+    client.zadd('entry:keyword:length', keyword, len(keyword))
     cur.execute(sql, (user_id, keyword, description, user_id, keyword, description))
     return redirect('/')
 
@@ -217,6 +227,8 @@ def delete_keyword(keyword):
         abort(404)
 
     cur.execute('DELETE FROM entry WHERE keyword = %s', (keyword,))
+    client = redis.Redis()
+    client.zrem('entry:keyword:length', keyword)
 
     return redirect('/')
 
@@ -245,10 +257,9 @@ def htmlify(content):
     if content == None or content == '':
         return ''
 
-    cur = dbh().cursor()
-    cur.execute('SELECT * FROM entry ORDER BY CHARACTER_LENGTH(keyword) DESC')
-    keywords = cur.fetchall()
-    keyword_re = re.compile("(%s)" % '|'.join([ re.escape(k['keyword']) for k in keywords]))
+    client = redis.Redis()
+    keywords = client.zrevrange('entry:keyword:length', 0, -1)
+    keyword_re = re.compile("(%s)" % '|'.join([ re.escape(k) for k in keywords]))
     kw2sha = {}
     def replace_keyword(m):
         kw2sha[m.group(0)] = "isuda_%s" % hashlib.sha1(m.group(0).encode('utf-8')).hexdigest()
