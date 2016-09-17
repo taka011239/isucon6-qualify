@@ -114,9 +114,7 @@ def get_initialize():
     if hasattr(g, 'entry_html'):
         delattr(g, 'entry_html')
 
-    cur.execute('SELECT * from user')
-    for u in cur.fetchall():
-        client.set('user:%s' % u['name'], u['name'])
+    client.delete('htmlify')
 
     return jsonify(result = 'ok')
 
@@ -179,6 +177,8 @@ def create_keyword():
 
     if hasattr(g, 'entry_html'):
         delattr(g, 'entry_html')
+
+    client.delete('htmlify')
 
     cur.execute(sql, (user_id, keyword, description, user_id, keyword, description))
     return redirect('/')
@@ -264,6 +264,8 @@ def delete_keyword(keyword):
     if hasattr(g, 'entry_html'):
         delattr(g, 'entry_html')
 
+    client.delete('htmlify')
+
     return redirect('/')
 
 @app.route("/stars")
@@ -288,6 +290,11 @@ def post_stars():
     return jsonify(result = 'ok')
 
 def htmlify(keyword, content):
+    client = redish()
+    cache = client.hget('htmlify', keyword)
+    if cache:
+        return cache.decode('utf-8')
+
     if not hasattr(g, 'entry_html'):
         print('miss hit 1')
         g.entry_html = {}
@@ -299,7 +306,6 @@ def htmlify(keyword, content):
     if content == None or content == '':
         return ''
 
-    client = redish()
     keywords = client.zrevrange('entry:keyword:length', 0, -1)
     keywords = [tuple(k.decode('utf-8').split('\t')) for k in keywords] # [(keyword, link), ...]
     kw2link = {k: l for k, l in keywords}
@@ -320,6 +326,7 @@ def htmlify(keyword, content):
 
     result = re.sub(regex_br, "<br />", result)
     g.entry_html[keyword] = result
+    client.hset('htmlify', keyword, result)
     return result
 
 def load_stars(keyword, cur):
